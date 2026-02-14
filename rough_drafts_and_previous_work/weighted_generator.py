@@ -30,7 +30,7 @@ weighted_words = {
 words_to_generate = 100
 
 # Sampling temperature
-temperature = 20.0
+temperature = 1.0
 
 # Whether to add to the probability of the output words appearing. This
 # can lead them to appear in a context in which they don't make sense.
