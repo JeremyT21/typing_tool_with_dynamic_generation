@@ -861,4 +861,10 @@ if __name__ == "__main__":
             save_sakt_bundle(save_path, model, opt, word2id, time_bins_ms)
             print(f"best bundle saved in: {save_path}")
 
+    '''
+    #if on Google Colab:
+    from google.colab import files
+    files.download("./artifacts/sakt_typing_bundle.pt")
+    '''
+
     print("SAKT training finished")
