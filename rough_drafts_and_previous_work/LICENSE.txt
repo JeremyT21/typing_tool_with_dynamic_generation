@@ -1,0 +1,4 @@
+SAKT model and the python notebook were built using work from the user HDKIM as reference:
+https://www.kaggle.com/code/leadbest/sakt-self-attentive-knowledge-tracing-submitter/notebook
+
+Comments in project highlight the differences and added functionalities that weren't present in the architecture provided by HDKIM.
