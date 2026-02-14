@@ -30,7 +30,7 @@ weighted_words = {
 words_to_generate = 100
 
 # Sampling temperature
-temperature = 1.0
+temperature = 0.9
 
 # Whether to add to the probability of the output words appearing. This
 # can lead them to appear in a context in which they don't make sense.
@@ -43,7 +43,17 @@ scale_factor = 2
 # Here it is attempting to increase the likelyhood that the target words probabilities
 # will not be 0
 
-context = "I like dogs and I like food "
+words_to_include = ''
+for i, word in enumerate(weighted_words):
+    if i != 0:
+        if i == len(weighted_words) - 1:
+            words_to_include += ', and '
+        else:
+            words_to_include += ', '
+
+    words_to_include += word
+
+context = f"Generate text for a typing program, include the words {words_to_include}: "
 
 
 # Model setup
