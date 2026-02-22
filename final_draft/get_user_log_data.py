@@ -4,13 +4,18 @@ import random
 import time
 
 #need to install random_word library (use pip install random_word)
-from random_word import RandomWords
+#from random_word import RandomWords
 
-csv_path = "typing_log.csv"
+#now using wordfreq to get frequently used words, not obscure words from RandomWords
+from wordfreq import top_n_list
+
+csv_path = "typing_log_v2.csv"
 user_id = "u1"
 
 header = ["user_id", "word", "time_ms", "mistypes"]
 
+'''
+#old word generation function:
 def generate_word_list(n):
     r = RandomWords()
     words = []
@@ -21,6 +26,18 @@ def generate_word_list(n):
     return words
     
 words_to_type = generate_word_list(520)
+'''
+
+def generate_word_list(n):
+    #https://github.com/rspeer/wordfreq used to get frequently used english words
+    common_words = top_n_list("en", n)#"en" ensures english
+    
+    #numbers can still be returned since they are commonly typed, to remove referenced: https://stackoverflow.com/questions/3159155/how-to-remove-all-integer-values-from-a-list-in-python
+    common_words_with_no_numbers = [word for word in common_words if not (word.isdigit() or word[0] == "-" and word[1:].isdigit())]
+
+    return common_words_with_no_numbers
+
+words_to_type = generate_word_list(500)
 
 #adding rows to the csv of inputted data
 def append_row(path, user_id, word, time_ms, mistypes):
@@ -42,7 +59,7 @@ def get_word_type_data():
 
         while True:
             typed = input("TYPE: ")
-            if reformatted(typed) == "quit":
+            if reformatted(typed) == "quit now":
                 print("all words typed")
                 return
 
