@@ -35,6 +35,12 @@ def generate_word_list(n):
     #numbers can still be returned since they are commonly typed, to remove referenced: https://stackoverflow.com/questions/3159155/how-to-remove-all-integer-values-from-a-list-in-python
     common_words_with_no_numbers = [word for word in common_words if not (word.isdigit() or word[0] == "-" and word[1:].isdigit())]
 
+    #this will be used to show the language model which words have difficulties generated from the SAKT
+    #(since these words are what the SAKT will use to train on)
+    with open("pickable_words.txt", "w") as file:
+        for word in common_words_with_no_numbers:
+            file.write(f"{word}\n")
+
     return common_words_with_no_numbers
 
 words_to_type = generate_word_list(500)

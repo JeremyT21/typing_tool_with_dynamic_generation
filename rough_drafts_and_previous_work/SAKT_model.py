@@ -11,8 +11,6 @@ import numpy as np
 import pandas as pd #HDKIM
 from torch.autograd import Variable
 
-csv_of_typing_log_data = "typing_log (1).csv"
-
 def subsequent_mask(size):
     "Mask out subsequent positions."
     attn_shape = (1, size, size)
@@ -197,7 +195,7 @@ import joblib #HDKIM
 
 class Data(Dataset):
     #HDKIM def __init__(self, train=True):
-    def __init__(self, df, train=True, time_bins_ms=None):#added initiation of time bins
+    def __init__(self, df, train=True):
         start_time = time.time()
         #HDKIM if train:
         #HDKIM    fileName = opt.train_data
@@ -206,8 +204,6 @@ class Data(Dataset):
         self.students = []
         self.max_skill_num = 0
         begin_index = 1e9
-
-        self.time_bins_ms = time_bins_ms
         
         #HDKIM with open(fileName, "r") as csvfile:
             #HDKIM for num_ques, ques, ans in itertools.zip_longest(*[csvfile] * 3):
@@ -258,7 +254,7 @@ class Data(Dataset):
                 if copy_len > num_ques:
                     copy_len = num_ques
                 problems = np.zeros(opt.max_len, dtype=np.int64)
-                correct = np.zeros(opt.max_len, dtype=np.int64)
+                correct = np.ones(opt.max_len, dtype=np.int64)
 
                 #JEREMY - adding time
                 time_array = np.zeros(opt.max_len, dtype=np.float32)
@@ -291,7 +287,7 @@ class Data(Dataset):
                     #HDKIM if left_num_ques>2: 
                     if left_num_ques>0:
                         problems = np.zeros(opt.max_len, dtype=np.int64)
-                        correct = np.zeros(opt.max_len, dtype=np.int64)
+                        correct = np.ones(opt.max_len, dtype=np.int64)
 
                         #JEREMY - adding time
                         time_array = np.zeros(opt.max_len, dtype=np.float32)
@@ -340,15 +336,8 @@ class Data(Dataset):
         answer_in = correct[:-1].copy()
         time_in = times[:-1].copy()
 
-        #now the previously established time bins are only used if times can't be found in the csv
-        if self.time_bins_ms is None:
-            example_bins = np.array([150,250,350,500,700,900,1200,1600,2200], dtype=np.float32)
-            timestamp_bucket_in = np.digitize(time_in, example_bins).astype(np.int64)
-
-        else:
-            timestamp_bucket_in = np.digitize(time_in, self.time_bins_ms).astype(np.int64)
-            #np.clip forces timestamps to be within a minimum 0 and an opt.timestamp_buckets - 1 max value
-            timestamp_bucket_in = np.clip(timestamp_bucket_in, 0, opt.timestamp_buckets - 1)
+        example_bins = np.array([150,250,350,500,700,900,1200,1600,2200], dtype=np.float32)
+        timestamp_bucket_in = np.digitize(time_in, example_bins).astype(np.int64)
 
         question_next = problems[1:].copy()
         correct_target = correct[1:].copy()
@@ -788,28 +777,10 @@ def save_sakt_bundle(save_path, model, opt, word2id, time_bins_ms):
     }
     torch.save(bundle, save_path)
 
-#building log time categories using percentiles directly from user typing CSV data
-def make_time_bins(typing_log, time_categories, lower_percentile, high_percentile):
-    type_times = typing_log["time_ms"].astype(float).to_numpy()
-    
-    minimum_time = np.percentile(type_times, lower_percentile)
-    maximum_time = np.percentile(type_times, high_percentile)
-    #in case minimum time is less than 1ms
-    minimum_time = max(minimum_time, 1.0)
-
-    #creating linearly spaced time categories / bins using log normalized times
-    categories = np.geomspace(minimum_time, maximum_time, time_categories+1)[1:-1]
-    categories = np.unique(categories)
-
-    return categories
-
-
 if __name__ == "__main__":
 
     #load typing log
-    #typing_log = pd.read_csv("/content/drive/MyDrive/Colab Notebooks/typing_log.csv")
-    #Testing log:
-    typing_log = pd.read_csv(csv_of_typing_log_data)
+    typing_log = pd.read_csv("/content/drive/MyDrive/Colab Notebooks/typing_log.csv")
 
     #build vocab
     word2id = build_word_vocab(typing_log, min_freq=1)
@@ -820,18 +791,13 @@ if __name__ == "__main__":
     seqs_df = make_sequences_df(typing_log, word2id, 30) #max seq will always be 100 for now (not too long not too short) #changed to 30 due to less typing logs
     train_df, valid_df = split_train_valid(seqs_df, valid_frac=0.2, seed=0)
 
-    #No longer using manually defined timebins by default:
-    #time_bins_ms = np.array(np.linspace(800, 18000, 10), dtype=np.float32)
-
-    #this will create 10 time categories using 1st and 99th percentile as min and max
-    time_bins_ms = make_time_bins(typing_log, 10, 1, 99)
-    opt.timestamp_buckets = len(time_bins_ms) + 1
+    time_bins_ms = np.array(np.linspace(800, 18000, 10), dtype=np.float32)
 
     #train, validate, and export model
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    train_dataset = Data(train_df, train=True, time_bins_ms=time_bins_ms)
-    valid_dataset = Data(valid_df, train=False, time_bins_ms=time_bins_ms)
+    train_dataset = Data(train_df, train=True)
+    valid_dataset = Data(valid_df, train=False)
 
     train_loader = DataLoaderX(train_dataset, batch_size=opt.batch_size, num_workers=2,
                                pin_memory=True, shuffle=True)
