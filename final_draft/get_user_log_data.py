@@ -38,6 +38,8 @@ def generate_word_list(n):
     #numbers can still be returned since they are commonly typed, to remove referenced: https://stackoverflow.com/questions/3159155/how-to-remove-all-integer-values-from-a-list-in-python
     common_words_with_no_numbers = [word for word in common_words if not (word.isdigit() or word[0] == "-" and word[1:].isdigit())]
 
+    common_words_with_no_single_characters = [word for word in common_words if not (len(word) == 1)]
+
     #filter out all bad words - used https://pypi.org/project/better-profanity/    
     no_bad_words = [word for word in common_words_with_no_numbers if not profanity.contains_profanity(word)]
 
