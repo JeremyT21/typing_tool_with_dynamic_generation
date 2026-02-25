@@ -74,7 +74,7 @@ class LogitsWordsBiaser(LogitsProcessor):
             # Compute the gap between the logit and the maximum
             # so a bias of 1 will bring the logit equal to the maximum
             gap = (max_logit - current_logit) * self.biases[token]
-            scores[:, token] += self.biases[token]
+            scores[:, token] += gap
 
         return scores
 
@@ -128,7 +128,7 @@ def generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weig
 
 def get_processors():
     temperature_warper = TemperatureLogitsWarper(1.5)
-    biaser = LogitsWordsBiaser(tokenizer, weighted_words, 1)
+    biaser = LogitsWordsBiaser(tokenizer, weighted_words, 0.5)
     processors = LogitsProcessorList([temperature_warper, biaser])
     return processors
 
@@ -163,7 +163,7 @@ def count_target_words(weighted_words, sequence, defualt_count=0):
 
 
 if __name__ == '__main__':
-    tokenizer, model = get_qwen()
+    tokenizer, model = get_gpt2()
     min_length = 250
     max_length = 250
 
@@ -174,7 +174,7 @@ if __name__ == '__main__':
 
     counts = []
     for i in range(runs):
-        output = generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weighted_words)
+        output = generate_sentence_with_processors(tokenizer, model, min_length, max_length, weighted_words)
         print(output)
         # Default count of -1 to ignore the words in the prompt
         count = count_target_words(weighted_words, output[0], -1)
