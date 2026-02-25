@@ -64,13 +64,19 @@ def reformatted(word):
     return word.strip().lower()
 
 def get_word_type_data():
+
+    count = 0
+
     while True:
         target = random.choice(words_to_type)
         target_norm = reformatted(target)
 
+        print(f"Words: {count}")
+        count += 1
         print(f"please type word: {target}")
         start = time.perf_counter()
         wrong_enters = 0
+
 
         while True:
             typed = input("TYPE: ")
