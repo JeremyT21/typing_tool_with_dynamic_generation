@@ -20,6 +20,7 @@ import torch.nn.functional
 from torch.distributions import Categorical
 from collections import (defaultdict, Counter)
 import string
+import time
 
 # What words to focus on and their weights, for now this is generated
 weighted_words = {
@@ -34,7 +35,6 @@ weighted_words = {
 # Model setup
 
 def get_causal_lm(model_name):
-    model_name = "Qwen/Qwen1.5-1.8B"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
     # GPT-2 does not have an EOS token
@@ -74,7 +74,7 @@ class LogitsWordsBiaser(LogitsProcessor):
             # Compute the gap between the logit and the maximum
             # so a bias of 1 will bring the logit equal to the maximum
             gap = (max_logit - current_logit) * self.biases[token]
-            scores[:, token] += gap
+            scores[:, token] += self.biases[token]
 
         return scores
 
@@ -128,7 +128,7 @@ def generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weig
 
 def get_processors():
     temperature_warper = TemperatureLogitsWarper(1.5)
-    biaser = LogitsWordsBiaser(tokenizer, weighted_words, 0.5)
+    biaser = LogitsWordsBiaser(tokenizer, weighted_words, 1)
     processors = LogitsProcessorList([temperature_warper, biaser])
     return processors
 
@@ -174,7 +174,9 @@ if __name__ == '__main__':
 
     counts = []
     for i in range(runs):
-        output = generate_sentence_with_processors(tokenizer, model, min_length, max_length, weighted_words)
+        start = time.time()
+        output = generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weighted_words)
+        print(f'Time: {time.time() - start}')
         print(output)
         # Default count of -1 to ignore the words in the prompt
         count = count_target_words(weighted_words, output[0], -1)
