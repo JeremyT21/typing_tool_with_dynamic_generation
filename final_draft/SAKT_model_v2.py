@@ -4,6 +4,30 @@
 
 #JEREMY removed above cell since only bottom code is needed to operate in Google Colab (we are not using Kaggle)
 
+#getting metrics for graphs for milestone 3:
+epochs = []
+train_auc = []
+train_acc = []
+train_rmse = []
+train_r2_pred_match = []
+train_time_rmse_log = []
+
+val_auc = []
+val_acc = []
+val_rmse = []
+val_r2_pred_match = []
+val_time_rmse_log = []
+
+train_y_targets = []
+train_y_probs = []
+train_time_target_log = []
+train_time_pred_log = []
+
+val_targets = []
+val_probs = []
+val_times_true = []
+val_times_pred = []
+
 #utils.py
 
 import torch
@@ -11,7 +35,7 @@ import numpy as np
 import pandas as pd #HDKIM
 from torch.autograd import Variable
 
-csv_of_typing_log_data = "typing_log (1).csv"
+csv_of_typing_log_data = "largest_dataset_2.csv"
 
 def subsequent_mask(size):
     "Mask out subsequent positions."
@@ -565,7 +589,8 @@ from sklearn.metrics import r2_score
 def run_epoch(m, dataloader, optimizer, scheduler,
               criterion1, criterion2,
               pad_id, lambda_time,
-              epoch_id=None, writer=None, is_training=True):
+              epoch_id=None, writer=None,
+              is_training=True, return_graph_stats=True):
 
     epoch_start_time = time.time()
     m.to(device)
@@ -693,7 +718,10 @@ def run_epoch(m, dataloader, optimizer, scheduler,
     #gets the root mean square error for log times
     time_rmse = sqrt(mean_squared_error(actual_log_times, pred_log_times)) if len(actual_log_times) else None
 
-    return rmse, auc, r2, accuracy, pred_labels, time_rmse
+    if return_graph_stats:
+        return rmse, auc, r2, accuracy, time_rmse, actual_labels, pred_labels, actual_log_times, pred_log_times
+    else:
+        return rmse, auc, r2, accuracy, pred_labels, time_rmse
 
 '''
 IF RUNNING ON GOOGLE COLAB:
@@ -862,13 +890,14 @@ if __name__ == "__main__":
         print(f"\ncurrent epoch: {epoch+1} out of {opt.max_epoch}")
 
         #train model
-        train_rmse, train_auc, train_r2, train_acc, _, train_time_rmse = run_epoch(
+        train_rmse_scalar, train_auc_scalar, train_r2_scalar, train_acc_scalar, train_time_rmse_scalar, t_y_true, t_y_prob, t_time_true_log, t_time_pred_log = run_epoch(
             model, train_loader,
             optimizer, scheduler,
             criterion_err, criterion_time,
             pad_id=opt.word_padding,
             lambda_time=opt.lambda_time,
-            is_training=True
+            is_training=True,
+            return_graph_stats=True
         )
 
         #checking if any valid samples
@@ -878,20 +907,51 @@ if __name__ == "__main__":
 
         #validate model
         with torch.no_grad():
-            val_rmse, val_auc, val_r2, val_acc, _, val_time_rmse = run_epoch(
+            val_rmse_scalar, val_auc_scalar, val_r2_scalar, val_acc_scalar, val_time_rmse_scalar, v_y_true, v_y_prob, v_time_true_log, v_time_pred_log = run_epoch(
                 model, valid_loader,
                 optimizer=None, scheduler=None,
                 criterion1=criterion_err, criterion2=criterion_time,
                 pad_id=opt.word_padding,
                 lambda_time=opt.lambda_time,
-                is_training=False
+                is_training=False,
+                return_graph_stats=True
             )
 
-        print(f"valid AUC = {val_auc:.4f} ACC = {val_acc:.4f} time_rmse(log) = {val_time_rmse}")
+        print(f"valid AUC = {val_auc_scalar:.4f} ACC = {val_acc_scalar:.4f} time_rmse(log) = {val_time_rmse_scalar}")
+
+        epochs.append(epoch+1)
+        train_auc.append(train_auc_scalar)
+        train_acc.append(train_acc_scalar)
+        train_rmse.append(train_rmse_scalar)
+        train_r2_pred_match.append(train_r2_scalar)
+        if train_time_rmse_scalar is None:
+            train_time_rmse_log.append(None)
+        else:
+            train_time_rmse_log.append(train_time_rmse_scalar)
+
+        val_auc.append(val_auc_scalar)
+        val_acc.append(val_acc_scalar)
+        val_rmse.append(val_rmse_scalar)
+        val_r2_pred_match.append(val_r2_scalar)
+        if val_time_rmse_scalar is None:
+            val_time_rmse_log.append(None)
+        else:
+            val_time_rmse_log.append(val_time_rmse_scalar)
+
+        #using extend to get lists and not lists of lists appended to each variable
+        train_y_targets.extend(t_y_true)
+        train_y_probs.extend(t_y_prob)
+        train_time_target_log.extend(t_time_true_log)
+        train_time_pred_log.extend(t_time_pred_log)
+
+        val_targets.extend(v_y_true)
+        val_probs.extend(v_y_prob)
+        val_times_true.extend(v_time_true_log)
+        val_times_pred.extend(v_time_pred_log)
 
         #save best model
-        if val_auc > best_auc:
-            best_auc = val_auc
+        if val_auc_scalar > best_auc:
+            best_auc = val_auc_scalar
             save_sakt_bundle(save_path, model, opt, word2id, time_bins_ms)
             print(f"best bundle saved in: {save_path}")
 
@@ -902,3 +962,59 @@ if __name__ == "__main__":
     '''
 
     print("SAKT training finished")
+
+    #Jeremy added graph creation
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    #checking / making graphs dir
+    os.makedirs("./graphs", exist_ok=True)
+    #shows area under curve (how well SAKT distinguishes between misstyped and not misstyped words)
+    #e.g. prob that the model gives a better correctness rating to the correctly typed word as opposed to the misspelled word
+    plt.figure()
+    plt.plot(epochs, train_auc)
+    plt.plot(epochs, val_auc)
+    plt.title("Area Under Curve (AUC) Over Each Current Epoch")
+    plt.xlabel("Epoch #")
+    plt.ylabel("AUC Values")
+    plt.legend(["Training AUC", "Validation AUC"])
+    plt.savefig("./graphs/auc.png")
+    plt.close()
+
+    #modeling accuracy value for each epoch
+    #data is not balances (more words are typed properly, so it's easier for the model to predict every word is typed correctly with no misstypes)
+    plt.figure()
+    plt.plot(epochs, train_acc)
+    plt.plot(epochs, val_acc)
+    plt.title("Accuracy Over Each Current Epoch")
+    plt.xlabel("Epoch #")
+    plt.ylabel("Accuracy Values")
+    plt.legend(["Training Acc", "Validation Acc"])
+    plt.savefig("./graphs/acc.png")
+    plt.close()
+
+    #models how well the time is predicted each epoch
+    #typing time can have large values, so we are really predicting the log times
+    train_times = [None if current_log_time_value is None else current_log_time_value for current_log_time_value in train_time_rmse_log]
+    validate_times = [None if current_log_time_value is None else current_log_time_value for current_log_time_value in val_time_rmse_log]
+    plt.figure()
+    plt.plot(epochs, train_times)
+    plt.plot(epochs, validate_times)
+    plt.title("Log Time Root Mean Squared Error (RMSE) Over Current Epoch")
+    plt.xlabel("Epoch #")
+    plt.ylabel("RMSE (Log Applied Time Value)")
+    plt.legend(["Training Value", "Validation Value"])
+    plt.savefig("./graphs/log_times.png")
+    plt.close()
+
+    #models the predicted times it takes to spell words versus the actual time
+    plt.figure()
+    plt.scatter(val_times_true, val_times_pred, s=5)#size of dots 5
+    plt.title("Actual Log Times versus Predicted Log Times")
+    plt.xlabel("Actual Time (Unit: Log of (Time in Milliseconds + 1))")
+    plt.ylabel("Predicted Time (Unit: Log of (Time in Milliseconds + 1))")
+    plt.savefig("./graphs/time_scatter.png")
+    plt.close()
+
+    print("Graphs created and exported as PNGs.")
