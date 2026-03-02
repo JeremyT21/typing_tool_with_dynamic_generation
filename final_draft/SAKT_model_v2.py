@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd #HDKIM
 from torch.autograd import Variable
 
-csv_of_typing_log_data = "largest_dataset_2.csv"
+csv_of_typing_log_data = "datasets/largest_dataset_2.csv"
 
 def subsequent_mask(size):
     "Mask out subsequent positions."
@@ -963,6 +963,7 @@ if __name__ == "__main__":
 
     print("SAKT training finished")
 
+    '''
     #Jeremy added graph creation
     import os
     import numpy as np
@@ -1018,3 +1019,4 @@ if __name__ == "__main__":
     plt.close()
 
     print("Graphs created and exported as PNGs.")
+    '''
