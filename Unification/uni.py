@@ -98,13 +98,13 @@ class scoringModel(student_model):
 
                 # Then ask the model for its predictions for all the words in the dataset
                 # (You can see this kind of as a bigram type of system: x is the word and y is the word we
-                # want to score in a bigram like (x,y).)
+                # want to score in a bigram-like (x,y).)
                 errLogits, predLogTime = self.forward(ques_in, ans_in, tb_in, next_q)
 
                 # The LLM is designed to ingest probabilty-type bias (so .001 to .999) so we have to clamp &
                 # normalize the outputs from the model.
 
-                # Clamp (sigmods - possibly an improvement to be made here later?)
+                # Clamp (sigmoids - possibly an improvement to be made here later?)
                 pCorrect = torch.sigmoid(errLogits)
                 pMistype = 1.0 - pCorrect
                 predTime = torch.expm1(predLogTime)
@@ -136,12 +136,20 @@ class scoringModel(student_model):
                     wordScores[w].append(float(h))
 
         # We want all the scores within (.000 -> .999), so we'll just round that off to 3 digits..:
+        '''
+        For Jeremy: We can probably grab this output here for use in a more dynamic system. If we did a
+        SAKT Training pass prior to running this function, then grab the below output, it should be the same. 
+        the only tricky part is that it may be a little tricky to be running and storing the model in real time.
+        It's also possible that starting from a pretrained place and then getting more specific with the model
+        could be a good approach.
+        '''
         final_scores = [[w, round(float(np.mean(v)), 3)] for w, v in wordScores.items()]
 
         # For ease of reading, I have sorted the numbers highest to lowest in the CSV.
         final_scores.sort(key=lambda x: x[1], reverse=True)
         return final_scores
 
+# TESTING SYSTEMS. NOT NECESSARILY FINAL USE PRODUCT.
 # This is just CLI crap. do what you want.
 if __name__ == "__main__":
     import argparse
