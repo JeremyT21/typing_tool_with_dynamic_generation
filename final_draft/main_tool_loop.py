@@ -111,6 +111,11 @@ def load_sakt_bundle(path, device):
 
     return bundle, word2id, time_bins_ms, opt
 
+#needed for sorting difficulties so most difficult is first
+#for reference: https://stackoverflow.com/questions/5653346/sorting-iterables-based-on-preferred-order-of-strings
+def getting_score_tuple_for_sorting(current_tuple):
+    return current_tuple[1]
+
 if __name__ == "__main__":
     bundle_path = "./artifacts/sakt_typing_bundle.pt"
     pickable_path = "./pickable_words.txt"
@@ -206,6 +211,9 @@ if __name__ == "__main__":
                 scores_needed.append((word, score))
 
         scores = scores_needed
+
+        #sorting the scores so the hardest word is first like in word weights that are calculated later below in code
+        scores.sort(key=getting_score_tuple_for_sorting, reverse=True)
 
         #in the current case only want top 1 most difficult word
         hard_words = []
