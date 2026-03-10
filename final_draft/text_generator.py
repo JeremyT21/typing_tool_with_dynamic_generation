@@ -22,15 +22,7 @@ from collections import (defaultdict, Counter)
 import string
 import time
 
-# What words to focus on and their weights, for now this is generated
-weighted_words = {
-    'these': 0.147, 'runtime': 0.219, 'many': 0.684, 'they': 0.144, 'part': 0.769, 
-    'it': 0.122, 'javascript': 0.619, 'are': 0.018, 'translucent': 0.366, 'write': 0.288, 
-    'not': 0.958, 'into': 0.441, 'their': 0.891, 'languid': 0.585, 'other': 0.635, 
-    'on': 0.553, 'effervescent': 0.382, 'conscientious': 0.742, 'ethernet': 0.262, 'be': 0.198, 
-    'is': 0.881, 'surreptitious': 0.084, 'would': 0.161, 'called': 0.22, 'who': 0.483, 
-    'some': 0.827, 'syzygy': 0.833, 'bureaucracy': 0.945, 'long': 0.022, 'output': 0.28, 
-}
+
 
 # Model setup
 
@@ -62,7 +54,7 @@ class LogitsWordsBiaser(LogitsProcessor):
         for word in weighted_words:
             token_id = tokenizer.encode(word, add_special_tokens=False)[0]
             # Weigh all words equally for now
-            self.biases[token_id] = self.strength
+            self.biases[token_id] = 1
 
     def __call__(self, input_ids, scores):
         # Find greatest logit
@@ -73,8 +65,10 @@ class LogitsWordsBiaser(LogitsProcessor):
 
             # Compute the gap between the logit and the maximum
             # so a bias of 1 will bring the logit equal to the maximum
+            # gap is currently unused as it completly breaks the output
             gap = (max_logit - current_logit) * self.biases[token]
-            scores[:, token] += self.biases[token]
+            # For now just use the given biases
+            scores[:, token] += (self.biases[token] * self.strength)
 
         return scores
 
@@ -96,7 +90,6 @@ def generate_from_context(tokenizer, model, min_length, max_length, context, pro
     return outputs
 
 
-
 '''
 
 Example 1:
@@ -115,26 +108,26 @@ def get_prompt(weighted_words: dict[str, float]):
     words_to_include = ', '.join(weighted_words)
     
     context = f'''You are a professional typing instructor. Your goal is to write natural, coherent, and flowing sentences for a typing test. Use standard English grammar and keep punctuation limited to periods and commas. Avoid special characters or obscure vocabulary unless instructed otherwise.
-Write a 10000 word text that naturally incorporates the target words.
+Write a 10000 word text that naturally incorporates the target words. After 'Output:' ONLY print the sentence. Do not stop writing text to type under any circumstance.
 Target Words: [{words_to_include}]
 Output: "''' 
     return context
 
 
-def generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weighted_words, processors=None):
-    context = get_prompt(weighted_words)
+def generate_sentence_with_prompt(prompt, tokenizer, model, min_length, max_length, weighted_words, processors=None):
+    context = prompt
     output = generate_from_context(tokenizer, model, min_length, max_length, context, processors=processors)
     return tokenizer.batch_decode(output.sequences[0], skip_special_tokens=False)
 
-def get_processors():
+def get_processors(tokenizer, weighted_words, bias):
     temperature_warper = TemperatureLogitsWarper(1.5)
-    biaser = LogitsWordsBiaser(tokenizer, weighted_words, 1)
+    biaser = LogitsWordsBiaser(tokenizer, weighted_words, bias)
     processors = LogitsProcessorList([temperature_warper, biaser])
     return processors
 
-def generate_sentence_with_processors(tokenizer, model, min_length, max_length, weighted_words):
-    processors = get_processors()
-    return generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weighted_words, processors=processors)
+def generate_sentence_with_processors(prompt, tokenizer, model, min_length, max_length, weighted_words, bias):
+    processors = get_processors(tokenizer, weighted_words, bias)
+    return generate_sentence_with_prompt(prompt, tokenizer, model, min_length, max_length, weighted_words, processors=processors)
 
 
 def count_target_words(weighted_words, sequence, defualt_count=0):
@@ -161,9 +154,19 @@ def count_target_words(weighted_words, sequence, defualt_count=0):
     return {'total': total, 'coverage': coverage, }#'counts': counts}
 
 
+# What words to focus on and their weights, for now this is generated
+sample_weighted_words = {
+    'these': 0.147, 'runtime': 0.219, 'many': 0.684, 'they': 0.144, 'part': 0.769, 
+    'it': 0.122, 'javascript': 0.619, 'are': 0.018, 'translucent': 0.366, 'write': 0.288, 
+    'not': 0.958, 'into': 0.441, 'their': 0.891, 'languid': 0.585, 'other': 0.635, 
+    'on': 0.553, 'effervescent': 0.382, 'conscientious': 0.742, 'ethernet': 0.262, 'be': 0.198, 
+    'is': 0.881, 'surreptitious': 0.084, 'would': 0.161, 'called': 0.22, 'who': 0.483, 
+    'some': 0.827, 'syzygy': 0.833, 'bureaucracy': 0.945, 'long': 0.022, 'output': 0.28, 
+}
 
-if __name__ == '__main__':
-    tokenizer, model = get_gpt2()
+def benchmark():
+    # Needs to be updated to work with the current version
+    tokenizer, model = get_qwen()
     min_length = 250
     max_length = 250
 
@@ -175,7 +178,7 @@ if __name__ == '__main__':
     counts = []
     for i in range(runs):
         start = time.time()
-        output = generate_sentence_with_prompt(tokenizer, model, min_length, max_length, weighted_words)
+        output = generate_sentence_with_prompt(tokenizer, model, min_length, max_length, sample_weighted_words)
         print(f'Time: {time.time() - start}')
         print(output)
         # Default count of -1 to ignore the words in the prompt
@@ -190,5 +193,31 @@ if __name__ == '__main__':
 
     print(counts)
     print(f'Average total: {average_total}, Average coverage: {average_coverage}')
+
+
+
+class TextGenerator:
+    def __init__(self, weighted_words={}, bias=1):
+        self.tokenizer, self.model = get_qwen()
+        self.weighted_words = weighted_words
+        self.bias = bias
+    
+    def set_weighted_words(self, weighted_words):
+        self.weighted_words = weighted_words
+    
+    def generate_sentence(self, min_length=250, max_length=300):
+        prompt = get_prompt(self.weighted_words)
+        output = generate_sentence_with_processors(prompt, self.tokenizer, self.model, min_length, max_length, self.weighted_words, self.bias)
+        output = output[0]
+        output = output[len(prompt):]
+        return output
+
+
+if __name__ == '__main__':
+    generator = TextGenerator(sample_weighted_words)
+    print(generator.generate_sentence())
+    
+
+
 
 
