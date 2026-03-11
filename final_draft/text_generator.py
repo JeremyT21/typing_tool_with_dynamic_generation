@@ -72,21 +72,7 @@ class LogitsWordsBiaser(LogitsProcessor):
         return scores
 
 
-def generate_from_context(tokenizer, model, min_length, max_length, context, processors=None):
-    inputs = tokenizer(context, return_tensors="pt", add_special_tokens=True, truncation=True)
-    outputs: transformers.GenerateOutput = model.generate(
-        **inputs,
-        min_new_tokens = min_length,
-        max_new_tokens = max_length,
-        return_dict_in_generate = True,
-        do_sample=True,
-        temperature=0.9,
-        logits_processor=processors,
-        top_p=0.95,
-        output_scores = True,
-    )
 
-    return outputs
 
 
 '''
@@ -113,20 +99,7 @@ Output: "'''
     return context
 
 
-def generate_sentence_with_prompt(prompt, tokenizer, model, min_length, max_length, weighted_words, processors=None):
-    context = prompt
-    output = generate_from_context(tokenizer, model, min_length, max_length, context, processors=processors)
-    return tokenizer.batch_decode(output.sequences[0], skip_special_tokens=False)
 
-def get_processors(tokenizer, weighted_words, bias):
-    temperature_warper = TemperatureLogitsWarper(1.5)
-    biaser = LogitsWordsBiaser(tokenizer, weighted_words, bias)
-    processors = LogitsProcessorList([temperature_warper, biaser])
-    return processors
-
-def generate_sentence_with_processors(prompt, tokenizer, model, min_length, max_length, weighted_words, bias):
-    processors = get_processors(tokenizer, weighted_words, bias)
-    return generate_sentence_with_prompt(prompt, tokenizer, model, min_length, max_length, weighted_words, processors=processors)
 
 
 def count_target_words(weighted_words, sequence, defualt_count=0):
@@ -196,19 +169,61 @@ def benchmark():
 
 
 class TextGenerator:
-    def __init__(self, weighted_words={}, bias=1):
+    def __init__(self, device, weighted_words={}, bias=1):
+        self.device = device
         self.tokenizer, self.model = get_qwen()
+        self.model = self.model.to(device)
         self.weighted_words = weighted_words
         self.bias = bias
     
     def set_weighted_words(self, weighted_words):
         self.weighted_words = weighted_words
     
+
+    def generate_from_context(self, min_length, max_length, context, processors=None):
+        inputs = self.tokenizer(context, return_tensors="pt", add_special_tokens=True, truncation=True).to(self.device)
+        generation_config = transformers.GenerationConfig(stop_strings=['.'])
+        outputs: transformers.GenerateOutput = self.model.generate(
+            **inputs,
+            generation_config = generation_config,
+            min_new_tokens = min_length,
+            max_new_tokens = max_length,
+            return_dict_in_generate = True,
+            do_sample=True,
+            temperature=0.9,
+            logits_processor=processors,
+            top_p=0.95,
+            output_scores = True,
+            tokenizer = self.tokenizer,
+        )
+
+        return outputs
+
+    def generate_sentence_with_prompt(self, prompt, min_length, max_length, processors=None):
+        context = prompt
+        output = self.generate_from_context(min_length, max_length, context, processors=processors)
+        return self.tokenizer.batch_decode(output.sequences[0], skip_special_tokens=False)
+
+    def get_processors(self):
+        temperature_warper = TemperatureLogitsWarper(1.5)
+        biaser = LogitsWordsBiaser(self.tokenizer, self.weighted_words, self.bias)
+        processors = LogitsProcessorList([temperature_warper, biaser])
+        return processors
+
+    def generate_sentence_with_processors(self, prompt, min_length, max_length):
+        processors = self.get_processors()
+        return self.generate_sentence_with_prompt(prompt, min_length, max_length, processors=processors)
+
+    
     def generate_sentence(self, min_length=100, max_length=100):
         prompt = get_prompt(self.weighted_words)
-        output = generate_sentence_with_processors(prompt, self.tokenizer, self.model, min_length, max_length, self.weighted_words, self.bias)
+        output = self.generate_sentence_with_processors(prompt, min_length, max_length)
         output = output[0]
         output = output[len(prompt):]
+        # The GenerationConfig already stops at '.' but just in case
+        # it doesn't (somtimes it skips it for some reason. Maybe '.'
+        # is combined with another punctuation such as ") we remove
+        # everything after it here.
         end_index = output.find(".")
         if end_index != -1:
             output = output[:end_index + 1]
@@ -216,7 +231,8 @@ class TextGenerator:
 
 
 if __name__ == '__main__':
-    generator = TextGenerator(sample_weighted_words)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    generator = TextGenerator(device, sample_weighted_words)
     for i in range(10):
         print(generator.generate_sentence())
     
