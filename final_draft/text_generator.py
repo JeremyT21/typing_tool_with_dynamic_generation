@@ -198,26 +198,27 @@ def benchmark():
 class TextGenerator:
     def __init__(self, weighted_words={}, bias=1):
         self.tokenizer, self.model = get_qwen()
-        print(self.tokenizer("."))
         self.weighted_words = weighted_words
         self.bias = bias
     
     def set_weighted_words(self, weighted_words):
         self.weighted_words = weighted_words
     
-    def generate_sentence(self, min_length=100, max_length=150):
+    def generate_sentence(self, min_length=100, max_length=100):
         prompt = get_prompt(self.weighted_words)
         output = generate_sentence_with_processors(prompt, self.tokenizer, self.model, min_length, max_length, self.weighted_words, self.bias)
         output = output[0]
         output = output[len(prompt):]
         end_index = output.find(".")
-        output = output[:end_index + 1]
+        if end_index != -1:
+            output = output[:end_index + 1]
         return output
 
 
 if __name__ == '__main__':
     generator = TextGenerator(sample_weighted_words)
-    print(generator.generate_sentence())
+    for i in range(10):
+        print(generator.generate_sentence())
     
 
 
