@@ -53,8 +53,7 @@ class LogitsWordsBiaser(LogitsProcessor):
         self.biases = {}
         for word in weighted_words:
             token_id = tokenizer.encode(word, add_special_tokens=False)[0]
-            # Weigh all words equally for now
-            self.biases[token_id] = 1
+            self.biases[token_id] = weighted_words[word]
 
     def __call__(self, input_ids, scores):
         # Find greatest logit
@@ -74,7 +73,7 @@ class LogitsWordsBiaser(LogitsProcessor):
 
 
 def generate_from_context(tokenizer, model, min_length, max_length, context, processors=None):
-    inputs = tokenizer(context, return_tensors="pt", add_special_tokens=False, truncation=True)
+    inputs = tokenizer(context, return_tensors="pt", add_special_tokens=True, truncation=True)
     outputs: transformers.GenerateOutput = model.generate(
         **inputs,
         min_new_tokens = min_length,
@@ -108,7 +107,7 @@ def get_prompt(weighted_words: dict[str, float]):
     words_to_include = ', '.join(weighted_words)
     
     context = f'''You are a professional typing instructor. Your goal is to write natural, coherent, and flowing sentences for a typing test. Use standard English grammar and keep punctuation limited to periods and commas. Avoid special characters or obscure vocabulary unless instructed otherwise.
-Write a 10000 word text that naturally incorporates the target words. After 'Output:' ONLY print the sentence. Do not stop writing text to type under any circumstance.
+Write a sentence that naturally incorporates some of the target words. After 'Output:' ONLY print the sentence.
 Target Words: [{words_to_include}]
 Output: "''' 
     return context
@@ -199,17 +198,20 @@ def benchmark():
 class TextGenerator:
     def __init__(self, weighted_words={}, bias=1):
         self.tokenizer, self.model = get_qwen()
+        print(self.tokenizer("."))
         self.weighted_words = weighted_words
         self.bias = bias
     
     def set_weighted_words(self, weighted_words):
         self.weighted_words = weighted_words
     
-    def generate_sentence(self, min_length=250, max_length=300):
+    def generate_sentence(self, min_length=100, max_length=150):
         prompt = get_prompt(self.weighted_words)
         output = generate_sentence_with_processors(prompt, self.tokenizer, self.model, min_length, max_length, self.weighted_words, self.bias)
         output = output[0]
         output = output[len(prompt):]
+        end_index = output.find(".")
+        output = output[:end_index + 1]
         return output
 
 
