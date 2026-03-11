@@ -5,7 +5,6 @@ python -m Unification.uni --csv final_draft\typing_log_v2.csv --bundle final_dra
 
 # imports
 from final_draft.SAKT_model_v2 import student_model
-# from final_draft.text_generator import generate_from_context
 
 import numpy as np
 import torch
