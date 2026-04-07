@@ -8,23 +8,37 @@ SAKT model.
 
 from transformers import (
     AutoTokenizer,
-    AutoModelForCausalLM,
     LogitsProcessor,
     LogitsProcessorList,
-    TemperatureLogitsWarper
+    TemperatureLogitsWarper,
+    AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM,
 )
-
 import torch
+import time
+from collections import (defaultdict, Counter)
+import string
 
+
+def get_causal_lm(model_name):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    # GPT-2 does not have an EOS token
+    model.config.pad_token_id = model.config.eos_token_id
+    return tokenizer, model
+
+def get_qwen():
+    return get_causal_lm("Qwen/Qwen1.5-1.8B")
 
 def get_gpt2():
-    # S-M: Rewrote this function and removed other references.
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
-    model = AutoModelForCausalLM.from_pretrained("gpt2")
+    return get_causal_lm("gpt2")
 
-    model.config.pad_token_id = model.config.eos_token_id
-
+def get_flan_t5():
+    model_name = "google/flan-t5-base"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     return tokenizer, model
+
 
 class LogitsWordsBiaser(LogitsProcessor):
 
@@ -79,13 +93,20 @@ Sentence:
 class TextGenerator:
 
     # S-M: Amended heavily.
-    def __init__(self, weighted_words=None, bias=2.0):
+    def __init__(self, weighted_words=None, bias=2.0, model = None, tokenizer = None):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if weighted_words is None:
             weighted_words = {}
 
-        # Using GPT-2
-        self.tokenizer, self.model = get_gpt2()
+        if model is None or tokenizer is None:
+            # Using GPT-2
+            self.tokenizer, self.model = get_qwen()
+        else:
+            self.tokenizer = tokenizer
+            self.model = model
+        
+        self.model = self.model.to(self.device)
 
         # Storing our weights and biases within the object.
         self.weighted_words = weighted_words
@@ -102,7 +123,7 @@ class TextGenerator:
         # Goes about actually generating a sentence.
         prompt = get_prompt(self.weighted_words)
 
-        inputs = self.tokenizer(prompt, return_tensors="pt")
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
         processors = LogitsProcessorList([
             TemperatureLogitsWarper(1.2),
@@ -135,3 +156,84 @@ class TextGenerator:
             return self.generate_sentence()
 
         return sentence
+
+def count_target_words(weighted_words, sequence, defualt_count=0):
+    text = [word.strip(string.punctuation).lower() for word in sequence.split()]
+
+    counts = {}
+    for word in weighted_words:
+        counts[word] = defualt_count
+
+    for token in text:
+        if token in counts:
+            counts[token] += 1
+    
+    total = 0
+    coverage = 0
+    for token in counts:
+        total += counts[token]
+        if counts[token] > 0:
+            coverage += 1
+
+    coverage /= len(counts)
+
+    #print(f'Total usages: {total}, coverage: {coverage}')
+    return {'total': total, 'coverage': coverage, }#'counts': counts}
+
+def benchmark(tokenizer_model, weighted_words, model_name):
+    print('Benchmarking', model_name)
+
+    # Needs to be updated to work with the current version
+    tokenizer, model = tokenizer_model
+    generator = TextGenerator(weighted_words, model = model, tokenizer = tokenizer)
+
+    min_length = 250
+    max_length = 250
+
+    runs = 50
+
+    average_total = 0
+    average_coverage = 0
+    average_time = 0
+
+    counts = []
+    for i in range(runs):
+        start = time.time()
+        output = generator.generate_sentence()
+        run_time = time.time() - start
+        print(f'Time: {run_time}')
+        print(output)
+        count = count_target_words(weighted_words, output)
+        print(count)
+        counts.append(count)
+        average_total += count['total']
+        average_coverage += count['coverage']
+        average_time += run_time
+
+    average_total /= runs
+    average_coverage /= runs
+    average_time /= runs
+
+    print(counts)
+    results = f'Model: {model_name}, Runs: {runs}, Average total: {average_total}, Average coverage: {average_coverage}, Average time {average_time}'
+    print(results)
+    return results
+
+
+# If this file is run on its own, run benchmarks
+if __name__ == '__main__':
+    sample_weighted_words = {
+        'these': 0.147, 'runtime': 0.219, 'many': 0.684, 'they': 0.144, 'part': 0.769, 
+        'it': 0.122, 'javascript': 0.619, 'are': 0.018, 'translucent': 0.366, 'write': 0.288, 
+        'not': 0.958, 'into': 0.441, 'their': 0.891, 'languid': 0.585, 'other': 0.635, 
+        'on': 0.553, 'effervescent': 0.382, 'conscientious': 0.742, 'ethernet': 0.262, 'be': 0.198, 
+        'is': 0.881, 'surreptitious': 0.084, 'would': 0.161, 'called': 0.22, 'who': 0.483, 
+        'some': 0.827, 'syzygy': 0.833, 'bureaucracy': 0.945, 'long': 0.022, 'output': 0.28, 
+    }
+
+    results = []
+    results.append(benchmark(get_flan_t5(), sample_weighted_words, 'Flan-T5-Base'))
+    results.append(benchmark(get_gpt2(), sample_weighted_words, 'GPT2'))
+    results.append(benchmark(get_qwen(), sample_weighted_words, 'Qwen'))
+
+    print('\n'.join(results))
