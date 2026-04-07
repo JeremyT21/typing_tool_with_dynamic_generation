@@ -93,7 +93,7 @@ Sentence:
 class TextGenerator:
 
     # S-M: Amended heavily.
-    def __init__(self, weighted_words=None, bias=2.0, model = None, tokenizer = None):
+    def __init__(self, weighted_words=None, bias=2.0, model=None, tokenizer=None, bias_logits=True):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if weighted_words is None:
@@ -111,6 +111,7 @@ class TextGenerator:
         # Storing our weights and biases within the object.
         self.weighted_words = weighted_words
         self.bias = bias
+        self.bias_logits = bias_logits
 
 
     def set_weighted_words(self, weighted_words):
@@ -125,10 +126,11 @@ class TextGenerator:
 
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
-        processors = LogitsProcessorList([
-            TemperatureLogitsWarper(1.2),
-            LogitsWordsBiaser(self.tokenizer, self.weighted_words, self.bias)
-        ])
+        logits_processors_list = [TemperatureLogitsWarper(1.2)]
+        if self.bias_logits:
+            logits_processors_list.append(LogitsWordsBiaser(self.tokenizer, self.weighted_words, self.bias))
+
+        processors = LogitsProcessorList(logits_processors_list)
 
         outputs = self.model.generate(
             **inputs,
@@ -180,17 +182,17 @@ def count_target_words(weighted_words, sequence, defualt_count=0):
     #print(f'Total usages: {total}, coverage: {coverage}')
     return {'total': total, 'coverage': coverage, }#'counts': counts}
 
-def benchmark(tokenizer_model, weighted_words, model_name):
+def benchmark(tokenizer_model, weighted_words, model_name, bias_logits=True):
     print('Benchmarking', model_name)
 
     # Needs to be updated to work with the current version
     tokenizer, model = tokenizer_model
-    generator = TextGenerator(weighted_words, model = model, tokenizer = tokenizer)
+    generator = TextGenerator(weighted_words, model=model, tokenizer=tokenizer, bias_logits=bias_logits)
 
     min_length = 250
     max_length = 250
 
-    runs = 50
+    runs = 10
 
     average_total = 0
     average_coverage = 0
@@ -215,7 +217,7 @@ def benchmark(tokenizer_model, weighted_words, model_name):
     average_time /= runs
 
     print(counts)
-    results = f'Model: {model_name}, Runs: {runs}, Average total: {average_total}, Average coverage: {average_coverage}, Average time {average_time}'
+    results = f'Model: {model_name}, Bias logits: {bias_logits}, Runs: {runs}, Average total: {average_total}, Average coverage: {average_coverage}, Average time {average_time}'
     print(results)
     return results
 
@@ -232,8 +234,11 @@ if __name__ == '__main__':
     }
 
     results = []
-    results.append(benchmark(get_flan_t5(), sample_weighted_words, 'Flan-T5-Base'))
-    results.append(benchmark(get_gpt2(), sample_weighted_words, 'GPT2'))
-    results.append(benchmark(get_qwen(), sample_weighted_words, 'Qwen'))
+    results.append(benchmark(get_flan_t5(), sample_weighted_words, 'Flan-T5-Base', True))
+    results.append(benchmark(get_flan_t5(), sample_weighted_words, 'Flan-T5-Base', False))
+    results.append(benchmark(get_gpt2(), sample_weighted_words, 'GPT2', True))
+    results.append(benchmark(get_gpt2(), sample_weighted_words, 'GPT2', False))
+    results.append(benchmark(get_qwen(), sample_weighted_words, 'Qwen', True))
+    results.append(benchmark(get_qwen(), sample_weighted_words, 'Qwen', False))
 
     print('\n'.join(results))
